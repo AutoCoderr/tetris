@@ -1,0 +1,736 @@
+<style>
+    #tetris td {
+        width: 20px;
+        height: 20px;
+    }
+
+    #nextForme td {
+        width: 20px;
+        height: 20px;
+    }
+
+    #reserve td {
+        width: 20px;
+        height: 20px;
+    }
+
+    table, th, td {
+      border: 1px solid black;
+    }
+    td {
+        vertical-align: top;
+    }
+    #game {
+        background-color: #000;
+        height: 90%;
+    }
+    #scoreTD {
+        position: absolute;
+        top: 5%;
+        left: 30%;
+        color: #fff;
+    }
+    #reserve {
+        position: absolute;
+        top: 10%;
+        left: 30%;
+        color: #fff;
+        background-color: #A6A6A6;
+    }
+    #tetris {
+        position: absolute;
+        top: 5%;
+        left: 37.5%;
+    }
+    #nextForme {
+        position: absolute;
+        top: 5%;
+        left: 55%;
+    }
+</style>
+
+<center>
+    <input id="startButton" type="button" value="start" onclick="startGame();" />
+    <div id="game">
+        <table>
+            <tr>
+                <td>
+                    <table>
+                        <tr><td id="scoreTD" style="color: #fff;">score : <span id="score"></span></td></tr>
+                        <tr><td id="reserve" style="color: #fff;"></td></tr>
+                    </table>
+                </td>
+                <td id="tetris">
+                </td>
+                <td id="nextForme">
+                </td>
+            </tr>
+        </table>
+    </div>
+</center>
+
+<audio id="audioPlayer" src="music.mp3"></audio>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.0/jquery.min.js"></script>
+<script src="formes.js"></script>
+<script src="random.js"></script>
+<script>
+    let R = new Random();
+
+    const pos = ["default","right","left","upside"];
+
+    let readyForGoDown = true;
+    let timeoutDescend;
+    let downPressed = false;
+
+    let nextForme = {pos: pos[R.rand(0,pos.length-1)], forme: lesFormes[R.rand(0,lesFormes.length-1)]};
+
+    let reserve = {};
+    let formeTMP = {};
+
+    const colors = {0 : "grey", 1: "#FFAD37", 2: "#AD1B69", 3: "blue", 4: "#23BDFD", 5: "#E91616", 6: "#1DDE13", 7: "yellow"};
+    let score = 0;
+
+    let tetris = genMatrice(20,10);
+
+    let nbMouv = 1;
+
+    let nbMouvForAcceleration = 10;
+    let coefAcceleration = -50;
+    let limitWait = 50;
+
+    let wait = 500;
+    let waitOld;
+    let started = false;
+    let isGameOver = false
+
+    let posOfForme;
+    let currentForme;
+    let lFg;
+    let cFg;
+    let widthForme;
+    let heightForme;
+
+    displayG();
+
+    document.onkeydown = function () {
+        if (!started) {
+            return;
+        }
+        switch (event.keyCode) {
+            case 37:
+                decaleTo("left", () => {
+                    displayG();
+                });
+                break;
+            case 39:
+                decaleTo("right", () => {
+                    displayG();
+                });
+                break;
+            case 38:
+                rotate(() => {
+                    displayG();
+                });
+                break;
+            case 40:
+                if (!downPressed) {
+
+                    downPressed = true;
+                    if (wait > 10) {
+                        waitOld = wait;
+                        wait = 10;
+                        readyForGoDown = false;
+                        clearTimeout(timeoutDescend);
+                        setTimeout(() => {
+                            readyForGoDown = true
+                            descendRec();
+                        },50);
+                    }
+                }
+        }
+    }
+
+    document.getElementById("reserve").onclick = function (){
+        if (started) {
+            getReserve();
+        }
+    }
+
+    document.onkeypress = function () {
+        if (!started) {
+            return;
+        }
+        switch (event.keyCode) {
+            case 32:
+                getReserve();
+                break;
+        }
+    }
+
+    function getReserve() {
+        if (typeof(reserve.pos) == "undefined" | typeof(reserve.forme) == "undefined") {
+                readyForGoDown = false;
+                clearTimeout(timeoutDescend);
+                setTimeout(() => {
+                    for (let l=lFg-1;l>(lFg-1)-heightForme;l--) {
+                        for (let c=cFg;c<cFg+widthForme;c++) {
+                            if (currentForme[posOfForme][l-(lFg-heightForme)][c-cFg] != 0 & tetris[l][c] == currentForme[posOfForme][l-(lFg-heightForme)][c-cFg]) {
+                                    //console.log("l => "+l+" ; c => "+c);
+                                tetris[l][c] = 0;
+                            }
+                        }
+                    }
+                    reserve = {pos: posOfForme, forme: copyObj(currentForme)};
+                    displayG();
+                    setTimeout(() => {
+                        readyForGoDown = true;
+                        descendForme();
+                    },50);
+                },50);
+            } else {
+                readyForGoDown = false;
+                clearTimeout(timeoutDescend);
+                setTimeout(() => {
+                    for (let l=lFg-1;l>(lFg-1)-heightForme;l--) {
+                        for (let c=cFg;c<cFg+widthForme;c++) {
+                            if (currentForme[posOfForme][l-(lFg-heightForme)][c-cFg] != 0 & tetris[l][c] == currentForme[posOfForme][l-(lFg-heightForme)][c-cFg]) {
+                                //console.log("l => "+l+" ; c => "+c);
+                                tetris[l][c] = 0;
+                            }
+                        }
+                    }
+                    setTimeout(() => {
+                        readyForGoDown = true;
+                        formeTMP.pos = posOfForme;
+                        formeTMP.forme = currentForme;
+                        descendForme(copyObj(reserve));
+                        reserve = copyObj(formeTMP);
+                        displayG();
+                    },50);
+                },50);
+            }
+    }
+
+    document.onkeyup = function () {
+        if (!started) {
+            return;
+        }
+        switch(event.keyCode) {
+            case 40:
+                downPressed = false;
+                wait = waitOld;
+        }
+    }
+
+    function rotate(callback) {
+        let newPos;
+        switch(posOfForme) {
+            case "default":
+                newPos = "right";
+                break;
+            case "right":
+                newPos = "upside";
+                break;
+            case "upside":
+                newPos = "left";
+                break;
+            case "left":
+                newPos = "default";
+                break;
+        }
+
+        let newForme = currentForme[newPos];
+        let cM = cFg+Math.floor(newForme[0].length/2);
+        let lM = (lFg-1)-Math.floor(newForme.length/2);
+
+        for (let l=lFg-1;l>(lFg-1)-heightForme;l--) {
+            for (let c=cFg;c<cFg+widthForme;c++) {
+                if (currentForme[posOfForme][l-(lFg-heightForme)][c-cFg] != 0 & tetris[l][c] == currentForme[posOfForme][l-(lFg-heightForme)][c-cFg]) {
+                    tetris[l][c] = 0;
+                }
+            }
+        }
+
+        let onGoodPlace = false;
+        while (!onGoodPlace) {
+            onGoodPlace = true;
+            for (let l=lM-Math.floor(newForme.length/2);l<=lM+Math.floor(newForme.length/2);l++) {
+                for (let c=cM-Math.floor(newForme[0].length/2);c<=cM+Math.floor(newForme[0].length/2);c++) {
+                    if (0 <= l & l < tetris.length) {
+                        if (0 <= c & c < tetris[l].length) {
+                           if (tetris[l][c] != 0) {
+                                onGoodPlace = false;
+                                lM -= 1;
+                                lFg -= 1;
+                                break;
+                            }
+                        } else {
+                            onGoodPlace = false;
+                            if (c >= tetris[l].length) {
+                                cM -= 1;
+                                cFg -=1;
+                            } else {
+                                cM += 1;
+                                cFg +=1;
+                            }
+                        }
+                    } else if (l<0) {
+                        onGoodPlace = false;
+                        lM += 1;
+                        lFg += 1;
+                        break;
+                    }
+                }
+            }
+        }
+        widthForme = newForme[0].length;
+        heightForme = newForme.length;
+        posOfForme = newPos;
+        for (let l=lFg-1;l>(lFg-1)-heightForme;l--) {
+            for (let c=cFg;c<cFg+widthForme;c++) {
+                tetris[l][c] = newForme[l-(lFg-heightForme)][c-cFg];
+            }
+        }
+        callback();
+    }
+
+    function decaleTo(sens,callback) {
+        if (lFg == null | cFg == null | widthForme == null | heightForme == null) {
+            return;
+        }
+        switch(sens) {
+            case "left":
+                if (cFg == 0) {
+                    return;
+                }
+                for (let l=lFg-1;l>(lFg-1)-heightForme;l--) {
+                    if (tetris[l][cFg-1] != 0 & tetris[l][cFg] != 0) {
+                        return;
+                    }
+                }
+                for (let l=lFg-1;l>(lFg-1)-heightForme;l--) {
+                    for (let c=cFg;c<cFg+widthForme;c++) {
+                        if (tetris[l][c] != 0 & currentForme[posOfForme][l-(lFg-heightForme)][c-cFg] == 0 & c-cFg < widthForme-1) {
+                            if (currentForme[posOfForme][l-(lFg-heightForme)][(c-cFg)+1] != 0 & tetris[l][c+1] == currentForme[posOfForme][l-(lFg-heightForme)][(c-cFg)+1]) {
+                                return;
+                            }
+                        }
+                    }
+                }
+                cFg -= 1;
+                for (let l=lFg-1;l>(lFg-1)-heightForme;l--) {
+                    for (let c=cFg;c<cFg+widthForme;c++) {
+                        if (tetris[l][c+1] != 0 & tetris[l][c+1] == currentForme[posOfForme][l-(lFg-heightForme)][c-cFg]) {
+                            tetris[l][c] = tetris[l][c+1];
+                            tetris[l][c+1] = 0;
+                        }
+                    }
+                }
+                callback();
+                break;
+            case "right":
+                if (cFg == tetris[0].length-widthForme) {
+                    return;
+                }
+                for (let l=lFg-1;l>(lFg-1)-heightForme;l--) {
+                    if (tetris[l][cFg+widthForme] != 0 & tetris[l][cFg+widthForme-1] != 0) {
+                        return;
+                    }
+                }
+                for (let l=lFg-1;l>(lFg-1)-heightForme;l--) {
+                    for (let c=(cFg+widthForme)-1;c>=cFg;c--) {
+                        if (tetris[l][c] != 0 & currentForme[posOfForme][l-(lFg-heightForme)][c-cFg] == 0 & c-cFg > 0) {
+                            if (currentForme[posOfForme][l-(lFg-heightForme)][(c-cFg)-1] != 0 & tetris[l][c-1] == currentForme[posOfForme][l-(lFg-heightForme)][(c-cFg)-1]) {
+                                return;
+                            }
+                        }
+                    }
+                }
+                cFg += 1;
+                for (let l=lFg-1;l>(lFg-1)-heightForme;l--) {
+                    for (let c=cFg+(widthForme-1);c>=cFg;c--) {
+                        if (tetris[l][c-1] != 0 & tetris[l][c-1] == currentForme[posOfForme][l-(lFg-heightForme)][c-cFg]) {
+                            tetris[l][c] = tetris[l][c-1];
+                            tetris[l][c-1] = 0;
+                        }
+                    }
+                }
+                callback();
+                break;
+        }
+    }
+
+    function verifTetris(callback) {
+        let nbDeleted = 0;
+        for (let l=0;l<tetris.length;l++) {
+            let tetrisWin = true;
+            for (let c=0;c<tetris[l].length;c++) {
+                if (tetris[l][c] == 0) {
+                    tetrisWin = false;
+                    break;
+                }
+            }
+            if (tetrisWin) {
+                nbDeleted += 1;
+                for (let c=0;c<tetris[l].length;c++) {
+                    tetris[l][c] = 0;
+                }
+                for (let lb=l;lb>0;lb--) {
+                    for (let c=0;c<tetris[lb].length;c++) {
+                        tetris[lb][c] = tetris[lb-1][c];
+                    }
+                }
+                for (let c=0;c<tetris[0].length;c++) {
+                    tetris[0][c] = 0;
+                }
+
+            }
+        }
+        if (nbDeleted == 1) {
+            score += 100;
+        } else {
+            score += (100*nbDeleted)*2;
+        }
+        displayG();
+        setTimeout(() => {
+           callback();
+        },50);
+    }
+
+    function descendForme(nextFormeB = nextForme) {
+        if (isGameOver) {
+            return;
+        }
+        const dataForme = placeUneForme(nextFormeB);
+        cFg = dataForme.cF;
+        lFg = dataForme.lF;
+        widthForme = dataForme.widthForme;
+        heightForme = dataForme.heightForme;
+
+        displayG();
+
+        if (lFg-heightForme < 0) {
+            gameOver();
+            return;
+        }
+
+        setTimeout(() => {
+            descendRec();
+        },700);
+    }
+
+    function descendRec() {
+        if (!readyForGoDown) {
+            return;
+        }
+        if (lFg == tetris.length) {
+            cFg = null;
+            lFg = null;
+            widthForme = null;
+            heightForme = null;
+            currentForme = null;
+            nbMouv += 1;
+            if (nbMouv >= nbMouvForAcceleration & wait > limitWait) {
+                nbMouv = 1;
+                wait += coefAcceleration;
+                waitOld += coefAcceleration;
+            }
+            clearTimeout(timeoutDescend);
+            readyForGoDown = false;
+
+            verifTetris(() => {
+                readyForGoDown = true;
+                descendForme();
+            });
+            return;
+        }
+        for (let l=lFg-1;l>(lFg-1)-heightForme;l--) {
+            for (let c=cFg;c<cFg+widthForme;c++) {
+                if (currentForme[posOfForme][l-(lFg-heightForme)][c-cFg] !== 0) {
+                    if ((l-(lFg-heightForme)) < heightForme-1) {
+                        if (tetris[l+1][c] !== 0 && currentForme[posOfForme][(l-(lFg-heightForme))+1][c-cFg] === 0) {
+                           cFg = null;
+                            lFg = null;
+                            widthForme = null;
+                            heightForme = null;
+                            currentForme = null;
+                            nbMouv += 1;
+                            if (nbMouv >= nbMouvForAcceleration & wait > limitWait) {
+                                nbMouv = 1;
+                                wait += coefAcceleration;
+                                waitOld += coefAcceleration;
+                            }
+                            clearTimeout(timeoutDescend);
+                            readyForGoDown = false;
+
+                            verifTetris(() => {
+                                readyForGoDown = true;
+                                descendForme();
+                            });
+                            return;
+                        }
+                    } else if (tetris[l+1][c] !== 0) {
+                            cFg = null;
+                            lFg = null;
+                            widthForme = null;
+                            heightForme = null;
+                            currentForme = null;
+                            nbMouv += 1;
+                            if (nbMouv >= nbMouvForAcceleration & wait > limitWait) {
+                                nbMouv = 1;
+                                wait += coefAcceleration;
+                                waitOld += coefAcceleration;
+                            }
+                            clearTimeout(timeoutDescend);
+                            readyForGoDown = false;
+
+                            verifTetris(() => {
+                                readyForGoDown = true;
+                                descendForme();
+                            });
+                            return;
+                    }
+                }
+            }
+        }
+        if (wait == 10) {
+            score += 1;
+        }
+        lFg += 1;
+        for (let l=lFg-1;l>(lFg-1)-heightForme;l--) {
+            for (let c=cFg;c<cFg+widthForme;c++) {
+                if (l > 0 & tetris[l-1][c] != 0 & tetris[l][c] == 0 & currentForme[posOfForme][(l-1)-((lFg-1)-heightForme)][c-cFg] != 0) {
+                    tetris[l][c] = tetris[l-1][c];
+                    tetris[l-1][c] = 0;
+                }
+            }
+        }
+        displayG();
+
+        timeoutDescend =  setTimeout(() => {
+            descendRec();
+        },wait);
+    }
+
+    function placeUneForme(nextFormeB = nextForme) {
+        let uneForme = nextFormeB.forme;
+
+        posOfForme = nextFormeB.pos;
+        currentForme = copyObj(uneForme);
+
+        nextFormeB.pos = pos[R.rand(0,pos.length-1)];
+        nextFormeB.forme = lesFormes[R.rand(0,lesFormes.length-1)];
+
+
+        //let cF = Math.round(Math.random()*((tetris[0].length)-uneForme[0].length));
+        let cF = Math.round(tetris[0].length/2)-Math.round(currentForme[posOfForme][0].length/2);
+        let lF = currentForme[posOfForme].length;
+
+        let decaled = true;
+        while(decaled && lF-1 >= 0) {
+            decaled = false;
+            for (let c=0;c<currentForme[posOfForme][0].length;c++) {
+                if (currentForme[posOfForme][currentForme[posOfForme].length-1][c] !== 0 && tetris[lF-1][cF+c] !== 0) {
+                    lF -= 1;
+                    decaled = true;
+                    break;
+                }
+            }
+        }
+        for (let l=0;l<currentForme[posOfForme].length;l++) {
+            for (let c=0;c<currentForme[posOfForme][l].length;c++) {
+                if (currentForme[posOfForme][l][c] !== 0 && lF-currentForme[posOfForme].length+l >= 0) {
+                    tetris[lF-currentForme[posOfForme].length+l][cF+c] = currentForme[posOfForme][l][c];
+                }
+            }
+        }
+        return {cF: cF, lF: lF, widthForme: currentForme[posOfForme][0].length, heightForme: currentForme[posOfForme].length};
+    }
+
+    function gameOver() {
+        alert("GameOver");
+        isGameOver = true;
+    }
+
+    function restartGame() {
+        $("#startButton").blur();
+        clearTimeout(timeoutDescend);
+        reserve = {}
+        wait = 500;
+        isGameOver = false;
+        for (let l=0;l<tetris.length;l++) {
+            for (let c=0;c<tetris[l].length;c++) {
+                tetris[l][c] = 0;
+            }
+        }
+        displayG();
+        descendForme();
+    }
+
+    function startGame() {
+        $("#startButton").blur();
+        started = true;
+        playMusic();
+        descendForme();
+        document.getElementById("startButton").value = "restart";
+        document.getElementById("startButton").onclick = function () {
+            restartGame();
+        }
+    }
+
+    function genMatrice(L,C) {
+        let mat = [];
+        for (let l=0;l<L;l++) {
+            mat.push([]);
+            for(let c=0;c<C;c++) {
+                mat[mat.length-1].push(0);
+            }
+        }
+        return mat;
+    }
+
+    function displayG() {
+        let str = "<table>";
+        for (let l=0;l<tetris.length;l++) {
+            str += "<tr>";
+            for (let c=0;c<tetris[l].length;c++) {
+                str += "<td style='background-color: "+colors[tetris[l][c]]+"'>&nbsp;&nbsp;</td>";
+            }
+            str += "</tr>";
+        }
+        str += "</table>";
+        document.getElementById("tetris").innerHTML = str;
+        document.getElementById("score").innerHTML = score;
+        str =  "<table>";
+        for (let l=0;l<nextForme.forme[nextForme.pos].length;l++) {
+            str += "<tr>";
+            for (let c=0;c<nextForme.forme[nextForme.pos][l].length;c++) {
+                if (nextForme.forme[nextForme.pos][l][c] != 0) {
+                    str += "<td style='background-color: "+colors[nextForme.forme[nextForme.pos][l][c]]+"'>&nbsp;&nbsp;</td>";
+                } else {
+                    str += "<td style='background-color: #000;'>&nbsp;&nbsp;</td>"
+                }
+            }
+            str += "</tr>";
+        }
+        str += "</table>";
+        document.getElementById("nextForme").innerHTML = str;
+        if (typeof(reserve.forme) != "undefined" & typeof(reserve.pos) != "undefined") {
+            console.log(reserve.forme[reserve.pos]);
+            str =  "<table>";
+            for (let l=0;l<reserve.forme[reserve.pos].length;l++) {
+                str += "<tr>";
+                for (let c=0;c<reserve.forme[reserve.pos][l].length;c++) {
+                    if (reserve.forme[reserve.pos][l][c] != 0) {
+                        str += "<td style='background-color: "+colors[reserve.forme[reserve.pos][l][c]]+"'>&nbsp;&nbsp;</td>";
+                    } else {
+                        str += "<td style='background-color: #000;'>&nbsp;&nbsp;</td>"
+                    }
+                }
+                str += "</tr>";
+            }
+            str += "</table>";
+        } else {
+            str = "<div style='width: 75px; height: 75px;'></div>";
+        }
+        document.getElementById("reserve").innerHTML = str;
+    }
+
+    function display() {
+        let str = "";
+        for (let l=0;l<tetris.length;l++) {
+            for (let c=0;c<tetris[l].length;c++) {
+                str += tetris[l][c];
+                if (c<tetris[l].length-1) {
+                    str += " | ";
+                }
+            }
+            str += "\n";
+        }
+        console.log(str);
+    }
+
+    function copyMat(tab) {
+        let tabB = [];
+        for (let l=0;l<tab.length;l++) {
+            tabB.push([]);
+            for (let c=0;c<tab[l].length;c++) {
+                tabB[tabB.length-1].push(tab[l][c]);
+            }
+        }
+        return tabB;
+    }
+
+    function copyObj(obj) {
+        if (obj instanceof Array) {
+            return copyList(obj);
+        } else {
+            return copyDict(obj);
+        }
+    }
+
+    function copyDict(dict) {
+        let copy = {};
+        for (let key in dict) {
+            if (typeof(dict[key]) == "object") {
+                copy[key] = copyObj(dict[key]);
+            } else {
+                copy[key] = dict[key];
+            }
+        }
+        return copy;
+    }
+
+    function copyList(list) {
+        let copy = [];
+        for (let i=0;i<list.length;i++) {
+            if (typeof(list[i]) == "object") {
+                copy.push(copyObj(list[i]));
+            } else {
+                copy.push(list[i]);
+            }
+        }
+        return copy
+    }
+
+    function playMusic() {
+        let player = document.querySelector('#audioPlayer');
+        player.play();
+        player.volume = 0.3;
+        setInterval(() => {
+            player.pause();
+            player.currentTime = 0;
+            player.play();
+        },(2*60*1000)+(10*1000));
+    }
+
+
+    const seuilMoveTouch = 200;
+    let startX;
+    let startY;
+
+    $(document).bind('touchstart', function (e){
+       startX = e.originalEvent.touches[0].clientX;
+       startY = e.originalEvent.touches[0].clientY;
+    });
+
+    $(document).bind('touchend', function (e){
+       const endX = e.originalEvent.changedTouches[0].clientX;
+       const endY = e.originalEvent.changedTouches[0].clientY;
+       if (endX-startX > seuilMoveTouch & (0-seuilMoveTouch < endY-startY & endY-startY < seuilMoveTouch)) {
+            decaleTo("right", () => {
+                displayG();
+            });
+       } else if (endX-startX < 0-seuilMoveTouch & (0-seuilMoveTouch < endY-startY & endY-startY < seuilMoveTouch)) {
+            decaleTo("left", () => {
+                displayG();
+            });
+       } else if (endY-startY < 0-seuilMoveTouch & (0-seuilMoveTouch < endX-startX & endX-startX < seuilMoveTouch)) {
+            rotate(() => {
+                displayG();
+            });
+       }
+
+    });
+
+</script>
